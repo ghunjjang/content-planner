@@ -1,0 +1,32 @@
+/* Keep the hero CTA and supporting note in the document flow at every viewport size. */
+.hero {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.hero small {
+  position: relative;
+  right: auto;
+  bottom: auto;
+  display: block;
+  order: 4;
+  margin: 0 0 12px;
+  white-space: nowrap;
+}
+
+.hero small br {
+  display: none;
+}
+
+.hero > a {
+  order: 5;
+}
+
+@media (max-width: 760px) {
+  .hero small {
+    right: auto;
+    bottom: auto;
+    margin-bottom: 12px;
+  }
+}
