@@ -1,0 +1,75 @@
+import { FormEvent, useState } from 'react';
+
+type Category = 'TRAVEL' | 'COOKING' | 'FITNESS' | 'FINANCE' | 'IT_TECH' | 'GAME' | 'EDUCATION' | 'HOBBY_DIY' | 'SELF_IMPROVEMENT' | 'ENTERTAINMENT' | 'FASHION_BEAUTY';
+type Goal = 'VIEWS' | 'SUBSCRIBE' | 'ENGAGEMENT' | 'INFO' | 'CONVERSION' | 'BRANDING' | 'RETENTION';
+type GenerateRequest = { title: string; category: Category; goal: Goal; topic: string; duration_sec: 60; location?: string | null; location_mood?: string | null };
+type Scene = { index: number; section: string; scene_type: string; time_range: string; duration_sec: number; title: string; description: string; direction: string; script: string };
+type GeneratedPlan = { summary: string; location_setting: string; props: string[]; equipment: string[]; scenes: Scene[]; full_script: string };
+
+const AI_SERVER = 'https://content-planner-ai-server.kindglacier-476f4763.koreacentral.azurecontainerapps.io';
+const PAGE_API = 'https://content-planner-api.kindglacier-476f4763.koreacentral.azurecontainerapps.io';
+const categories: { value: Category; label: string; icon: string }[] = [
+  { value: 'TRAVEL', label: '여행', icon: '✦' }, { value: 'COOKING', label: '요리', icon: '◒' }, { value: 'FITNESS', label: '운동', icon: '⌁' }, { value: 'FINANCE', label: '재테크', icon: '₩' },
+  { value: 'IT_TECH', label: 'IT · 테크', icon: '⌘' }, { value: 'GAME', label: '게임', icon: '◈' }, { value: 'EDUCATION', label: '교육', icon: '◌' }, { value: 'HOBBY_DIY', label: '취미 · DIY', icon: '✎' },
+  { value: 'SELF_IMPROVEMENT', label: '자기계발', icon: '↗' }, { value: 'ENTERTAINMENT', label: '엔터테인먼트', icon: '♡' }, { value: 'FASHION_BEAUTY', label: '패션 · 뷰티', icon: '✿' },
+];
+const goals: { value: Goal; label: string }[] = [
+  { value: 'VIEWS', label: '조회수' }, { value: 'SUBSCRIBE', label: '구독자' }, { value: 'ENGAGEMENT', label: '참여 유도' }, { value: 'INFO', label: '정보 전달' },
+  { value: 'CONVERSION', label: '전환' }, { value: 'BRANDING', label: '브랜딩' }, { value: 'RETENTION', label: '시청 유지' },
+];
+const initialForm = (): GenerateRequest => ({ title: '', category: 'SELF_IMPROVEMENT', goal: 'ENGAGEMENT', topic: '', duration_sec: 60, location: '', location_mood: '' });
+
+function Logo() { return <span className="logo-symbol" aria-hidden="true"><i /><i /><i /></span>; }
+function Arrow() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6" /></svg>; }
+function Sparkle() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l1.7 6.3L20 10l-6.3 1.7L12 18l-1.7-6.3L4 10l6.3-1.7L12 2z" /></svg>; }
+
+export default function App() {
+  const [form, setForm] = useState<GenerateRequest>(initialForm);
+  const [plan, setPlan] = useState<GeneratedPlan | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [notice, setNotice] = useState('');
+  const [activeScene, setActiveScene] = useState(0);
+  const [authOpen, setAuthOpen] = useState(false);
+  const [auth, setAuth] = useState({ username: '', password: '' });
+  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
+  const [token, setToken] = useState(() => localStorage.getItem('content-planner-token') ?? '');
+
+  const setField = <K extends keyof GenerateRequest>(key: K, value: GenerateRequest[K]) => setForm((current) => ({ ...current, [key]: value }));
+  const generate = async () => {
+    if (!form.title.trim() || !form.topic.trim()) { setNotice('콘텐츠 제목과 주제를 입력해 주세요.'); return; }
+    setLoading(true); setNotice('AI가 촬영 가능한 콘텐츠 기획안을 만들고 있어요.'); setPlan(null);
+    try {
+      const response = await fetch(`${AI_SERVER}/generate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...form, location: form.location || null, location_mood: form.location_mood || null }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.detail ?? '기획안 생성에 실패했습니다.');
+      setPlan(data as GeneratedPlan); setActiveScene(0); setNotice('기획안이 완성됐어요. 아래 장면별 가이드를 확인해 보세요.');
+    } catch (error) { setNotice(error instanceof Error ? error.message : 'AI 서버에 연결하지 못했습니다.'); }
+    finally { setLoading(false); }
+  };
+  const authenticate = async (event: FormEvent) => {
+    event.preventDefault();
+    try {
+      const endpoint = authMode === 'login' ? '/api/auth/login' : '/api/auth/signup';
+      const response = await fetch(`${PAGE_API}${endpoint}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(auth) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error ?? '인증에 실패했습니다.');
+      if (authMode === 'signup') { setAuthMode('login'); setNotice('가입이 완료됐어요. 로그인해 주세요.'); return; }
+      localStorage.setItem('content-planner-token', data.data.accessToken); setToken(data.data.accessToken); setAuthOpen(false); setNotice('로그인됐어요.');
+    } catch (error) { setNotice(error instanceof Error ? error.message : '인증에 실패했습니다.'); }
+  };
+
+  const selectedScene = plan?.scenes[activeScene];
+  return <div className="app-shell">
+    <header className="nav"><a href="#top" className="brand"><Logo /><span>content<span>ory</span></span></a><nav><a href="#create">새 기획</a><a href="#result">기획 결과</a></nav><button className="account-button" onClick={() => token ? (localStorage.removeItem('content-planner-token'), setToken('')) : setAuthOpen(true)}>{token ? '로그아웃' : '로그인'} <Arrow /></button></header>
+    <main id="top">
+      <section className="hero"><div className="hero-art"><span className="orb orb-one" /><span className="orb orb-two" /><span className="orb orb-three" /><span className="hero-star">✦</span></div><p className="kicker"><Sparkle /> AI CONTENT PLANNER</p><h1>생각을 꺼내면,<br /><em>콘텐츠가 됩니다.</em></h1><p className="hero-copy">좋은 아이디어가 촬영 가능한 한 편의 이야기로 완성되는 순간. 당신의 다음 콘텐츠를 함께 설계해 드릴게요.</p><a className="hero-cta" href="#create">기획 시작하기 <Arrow /></a></section>
+      <section id="create" className="creator"><div className="section-intro"><div><p className="kicker">CREATE A STORY</p><h2>어떤 이야기를 만들까요?</h2><p>핵심만 알려주시면, AI가 영상 구성부터 대본까지 구체적으로 설계해 드려요.</p></div><span>01 <i /> 02</span></div>
+        <div className="creator-grid"><div className="input-card"><div className="input-field"><label>콘텐츠 제목 <b>*</b></label><input value={form.title} onChange={(e) => setField('title', e.target.value)} placeholder="예: 퇴근 후 1시간, 나를 위한 저녁 루틴" /></div><div className="input-field"><label>카테고리 <b>*</b></label><div className="category-list">{categories.map((category) => <button key={category.value} className={form.category === category.value ? 'is-active' : ''} onClick={() => setField('category', category.value)}><i>{category.icon}</i>{category.label}</button>)}</div></div><div className="input-field"><label>영상 목표 <b>*</b></label><div className="goal-list">{goals.map((goal) => <button key={goal.value} className={form.goal === goal.value ? 'is-active' : ''} onClick={() => setField('goal', goal.value)}>{goal.label}</button>)}</div></div><div className="input-field"><label>콘텐츠 주제 <b>*</b></label><textarea value={form.topic} onChange={(e) => setField('topic', e.target.value)} placeholder="전하고 싶은 이야기와 시청자가 얻어갈 경험을 자유롭게 적어 주세요." /></div><details><summary>촬영 조건을 더 설정할래요 <span>+</span></summary><div className="details-grid"><div className="input-field"><label>촬영 장소</label><input value={form.location ?? ''} onChange={(e) => setField('location', e.target.value)} placeholder="예: 집, 카페, 야외" /></div><div className="input-field"><label>원하는 분위기</label><input value={form.location_mood ?? ''} onChange={(e) => setField('location_mood', e.target.value)} placeholder="예: 따뜻하고 차분한 무드" /></div></div></details><button className="generate-button" onClick={generate} disabled={loading}><Sparkle />{loading ? '기획안을 만들고 있어요…' : 'AI 기획안 만들기'}<Arrow /></button>{notice && <p className="notice">{notice}</p>}</div>
+          <aside className="preview-card"><span className="preview-label">WHAT YOU'LL GET</span><div className="preview-number">01</div><h3>한 편의 영상이 되는<br />콘텐츠 설계서</h3><p>아이디어를 시청자의 마음을 움직이는 이야기로 바꿔 드려요.</p><ul><li><b>01</b> 콘텐츠 핵심 메시지</li><li><b>02</b> 장면별 타임라인</li><li><b>03</b> 촬영 · 연출 가이드</li><li><b>04</b> 전체 내레이션 대본</li></ul></aside></div>
+      </section>
+      <section id="result" className="result-section">{plan ? <><div className="result-heading"><div><p className="kicker">YOUR CONTENT PLAN</p><h2>{form.title}</h2><p>{plan.summary}</p></div><span className="complete">완성</span></div><div className="plan-overview"><article><span>촬영 설정</span><strong>{plan.location_setting}</strong></article><article><span>준비물</span><strong>{plan.props.join(' · ') || '별도 소품 없음'}</strong></article><article><span>장비</span><strong>{plan.equipment.join(' · ') || '스마트폰 촬영'}</strong></article></div><div className="timeline"><div className="scene-nav">{plan.scenes.map((scene, index) => <button key={scene.index} onClick={() => setActiveScene(index)} className={index === activeScene ? 'active' : ''}><span>{String(index + 1).padStart(2, '0')}</span><b>{scene.section}</b><small>{scene.time_range}</small></button>)}</div>{selectedScene && <article className="scene-detail"><div className="scene-meta"><span>{selectedScene.scene_type}</span><span>{selectedScene.time_range} · {selectedScene.duration_sec}초</span></div><h3>{selectedScene.title}</h3><p>{selectedScene.description}</p><div className="direction"><b>촬영 · 연출</b><p>{selectedScene.direction}</p></div><div className="script"><b>대본</b><p>“{selectedScene.script}”</p></div></article>}</div><article className="full-script"><span>FULL SCRIPT</span><h3>전체 대본</h3><p>{plan.full_script}</p></article></> : <div className="result-empty"><span><Sparkle /></span><h2>당신의 다음 이야기를<br />기다리고 있어요.</h2><p>정보를 입력하고 AI 기획안을 만들어 보세요.</p></div>}</section>
+    </main>
+    {authOpen && <div className="modal-backdrop" onMouseDown={() => setAuthOpen(false)}><form className="auth-modal" onSubmit={authenticate} onMouseDown={(event) => event.stopPropagation()}><button type="button" className="close" onClick={() => setAuthOpen(false)}>×</button><Logo /><h2>{authMode === 'login' ? '다시 만나 반가워요.' : '새로운 이야기를 시작해요.'}</h2><p>{authMode === 'login' ? '로그인하고 나만의 콘텐츠 기획을 관리하세요.' : '아이디와 비밀번호로 계정을 만들어 주세요.'}</p><label>아이디<input value={auth.username} onChange={(e) => setAuth((value) => ({ ...value, username: e.target.value }))} required /></label><label>비밀번호<input type="password" value={auth.password} onChange={(e) => setAuth((value) => ({ ...value, password: e.target.value }))} required /></label><button className="auth-submit">{authMode === 'login' ? '로그인' : '회원가입'}</button><button type="button" className="mode-switch" onClick={() => setAuthMode((value) => value === 'login' ? 'signup' : 'login')}>{authMode === 'login' ? '계정이 없으신가요? 회원가입' : '이미 계정이 있으신가요? 로그인'}</button></form></div>}
+    <footer><a href="#top" className="brand"><Logo /><span>content<span>ory</span></span></a><p>Make your story, memorable.</p></footer>
+  </div>;
+}
